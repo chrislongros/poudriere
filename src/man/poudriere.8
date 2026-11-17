@@ -455,9 +455,10 @@ Hook scripts may be loaded in any of the following paths:
 .Dl Pa /usr/local/etc/poudriere.d/hooks/<hook>.sh
 .Dl Pa /usr/local/etc/poudriere.d/hooks/plugins/<plugin>/<hook>.sh
 .Pp
-For specific hook documentation see:
-.Lk https://github.com/freebsd/poudriere/wiki/hooks
+The hooks, their arguments and their environment are described in
+.Xr poudriere-hooks 5 .
 .Sh SEE ALSO
+.Xr poudriere-hooks 5 ,
 .Xr jail 8 ,
 .Xr poudriere-audit 8 ,
 .Xr poudriere-bulk 8 ,

@@ -1,0 +1,360 @@
+.\" Copyright (c) 2026 Christos Longros <longros@FreeBSD.org>
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" Note: The date here should be updated whenever a non-trivial
+.\" change is made to the manual page.
+.Dd November 17, 2026
+.Dt POUDRIERE-HOOKS 5
+.Os
+.Sh NAME
+.Nm poudriere-hooks
+.Nd hook scripts and plugins run by poudriere
+.Sh SYNOPSIS
+.Pa /usr/local/etc/poudriere.d/hooks/ Ns Ar hook Ns Pa .sh
+.Pp
+.Pa /usr/local/etc/poudriere.d/hooks/plugins/ Ns Ar plugin Ns Pa / Ns Ar hook Ns Pa .sh
+.Sh DESCRIPTION
+.Xr poudriere 8
+runs hook scripts at fixed points of its work, for example when a
+.Cm bulk
+run starts or ends, when a builder starts, or when the build of a
+package succeeds or fails.
+A hook script can send a notification, publish a repository, record
+statistics, or prepare a builder.
+.Pp
+Each point has a
+.Ar hook
+name and an
+.Ar event
+name.
+The hook name selects the file,
+.Ar hook Ns Pa .sh ;
+the event is passed to the script as its first argument.
+One script therefore handles all events of its hook and has to check
+the first argument.
+A hook without a script file is silently skipped.
+.Ss Hook files and plugins
+For each hook
+.Xr poudriere 8
+first runs
+.Pa hooks/ Ns Ar hook Ns Pa .sh
+and then
+.Pa hooks/plugins/ Ns Ar plugin Ns Pa / Ns Ar hook Ns Pa .sh
+for every plugin directory, in alphabetical order.
+A plugin is a directory that holds the hook scripts of one add-on, so
+that several add-ons can use the same hook without sharing a file.
+.Pp
+A plugin directory may also contain a file
+.Pa make.conf .
+It is appended to the
+.Pa make.conf
+of the jail after the files described in
+.Xr poudriere 8 .
+.Ss How a hook is run
+.Bl -bullet
+.It
+The script is run with
+.Pa /bin/sh .
+The interpreter line and the execute permission of the file are ignored.
+.It
+It is called as
+.Ar hook Ns Pa .sh
+.Ar event
+.Op Ar argument ...
+.It
+It runs on the host, as the user running
+.Xr poudriere 8 ,
+not inside a jail.
+.It
+The working directory is
+.Pa /tmp
+and standard input is
+.Pa /dev/null .
+.It
+If the script exits with a non-zero status,
+.Xr poudriere 8
+stops with an error.
+A script that must never interrupt a build has to end with
+.Ql exit 0 .
+.It
+.Xr poudriere 8
+waits for the script.
+A slow
+.Ql pkgbuild
+or
+.Ql builder
+hook slows down the whole build.
+.El
+.Sh HOOKS
+The arguments listed here follow the event name.
+.Ss bulk
+Run by
+.Xr poudriere-bulk 8
+only.
+.Bl -tag -width "crashed"
+.It Cm start
+The run starts, before the jail is started.
+.It Cm done Ar built failed ignored skipped fetched
+The run has finished.
+The arguments are the numbers of built, failed, ignored, skipped and
+fetched packages.
+.It Cm crashed
+The run ended abnormally, for example after an internal error or a
+signal.
+.El
+.Ss pkgbuild
+Run once for each package of the queue.
+.Bl -tag -width "crashed"
+.It Cm success Ar origin pkgname
+The package was built.
+.It Cm failed Ar origin pkgname phase logfile
+The build failed in
+.Ar phase ,
+for example
+.Ql build
+or
+.Ql stage .
+.Ar logfile
+is the log of the failed build.
+.It Cm ignored Ar origin pkgname reason
+The port is marked
+.Dv IGNORE ,
+.Dv BROKEN
+or similar.
+.Ar reason
+is the text given by the port.
+.It Cm skipped Ar origin pkgname dependency
+The port was not built because the port
+.Ar dependency
+failed or was ignored.
+Not run for a dry run
+.Pq Fl n .
+.El
+.Ss jail
+.Bl -tag -width "crashed"
+.It Cm start
+The master jail has been started.
+.It Cm stop
+The master jail is about to be stopped.
+.It Cm mount Ar mountpoint
+The file systems of a jail have been mounted under
+.Ar mountpoint .
+.It Cm pkgbase Ar repository
+.Xr poudriere-jail 8
+has created the base system packages of a jail in the directory
+.Ar repository .
+.El
+.Ss builder
+.Bl -tag -width "crashed"
+.It Cm start Ar id mountpoint
+Builder
+.Ar id
+has been created; its root directory is
+.Ar mountpoint .
+.It Cm stop Ar id mountpoint
+Builder
+.Ar id
+is about to be stopped.
+.El
+.Ss pkgrepo
+.Bl -tag -width "crashed"
+.It Cm sign Ar packages key from_host meta_file
+Run just before
+.Xr pkg-repo 8 .
+The arguments are the package directory and the values of
+.Va PKG_REPO_SIGNING_KEY ,
+.Va PKG_REPO_FROM_HOST
+and
+.Va PKG_REPO_META_FILE .
+.It Cm publish Ar packages
+The repository in
+.Ar packages
+is complete and has been committed.
+After a build with failures it is run only if
+.Va COMMIT_PACKAGES_ON_FAILURE
+allows the commit.
+.El
+.Ss pkgclean
+.Bl -tag -width "crashed"
+.It Cm done Ar deleted build_repo force_build_repo
+.Xr poudriere-pkgclean 8
+has finished.
+.Ar deleted
+is 1 if packages were deleted and 0 otherwise.
+.Ar build_repo
+is 0 if rebuilding the repository was disabled with
+.Fl N
+and 1 otherwise.
+.Ar force_build_repo
+is 1 if a rebuild was forced with
+.Fl u .
+.El
+.Ss ports_update
+.Bl -tag -width "crashed"
+.It Cm done
+.Cm poudriere ports -u
+has updated a ports tree.
+.El
+.Ss foreachport
+.Bl -tag -width "crashed"
+.It Cm start , Cm stop
+Run before and after the
+.Cm foreachport
+command processes the ports.
+.El
+.Ss Hooks around the steps of a build
+These hooks have the events
+.Cm start
+and
+.Cm stop
+and no arguments.
+They are mostly useful to measure or debug
+.Xr poudriere 8
+itself.
+.Bl -tag -width "gather_port_vars"
+.It Cm gather_port_vars
+Reading the metadata of the ports.
+.It Cm generate_queue
+Creating the build queue.
+.It Cm compute_deps
+Calculating the dependencies.
+.It Cm delete_old_pkgs
+Checking which existing packages are out of date.
+.It Cm start_builders
+Creating the builders.
+.It Cm build_queue
+Building the packages of the queue.
+.El
+.Sh ENVIRONMENT
+Every hook gets these variables.
+A variable is empty if it has no meaning at that point; for example
+.Ev MY_BUILDER_ID
+is only set in hooks run by a builder.
+.Bl -tag -width "POUDRIERE_BUILD_TYPE"
+.It Ev BUILDNAME
+Name of the build, see
+.Va BUILDNAME_FORMAT
+in
+.Pa poudriere.conf .
+.It Ev BUILD_URL
+Web address of the build, if
+.Va URL_BASE
+is set.
+.It Ev JAILNAME
+Name of the jail.
+.It Ev LOG
+Log directory of the build.
+.It Ev LOG_URL
+Web address of the logs, if
+.Va URL_BASE
+is set.
+.It Ev MASTERMNT
+Root directory of the master jail, from which the builders are cloned.
+.It Ev MASTERNAME
+Name of the master jail:
+.Ar jail Ns - Ns Ar tree ,
+followed by
+.No - Ns Ar set
+if a set is used.
+.It Ev MY_BUILDER_ID
+Id of the builder that runs the hook.
+.It Ev MY_JOBID
+Old name of
+.Ev MY_BUILDER_ID ;
+deprecated.
+.It Ev PACKAGES
+Package directory of this build.
+With
+.Va ATOMIC_PACKAGE_REPOSITORY
+it is a subdirectory of
+.Ev PACKAGES_ROOT .
+.It Ev PACKAGES_ROOT
+Top-level package directory.
+.It Ev POUDRIERED
+The
+.Pa poudriere.d
+directory.
+.It Ev POUDRIERE_BUILD_TYPE
+Always
+.Ql bulk ,
+also for
+.Cm testport .
+.It Ev POUDRIERE_DATA
+The data directory, by default
+.Pa /usr/local/poudriere/data .
+.It Ev PTNAME
+Name of the ports tree.
+.It Ev SETNAME
+Name of the set
+.Pq Fl z ,
+or empty.
+.It Ev VERBOSE
+Number of
+.Fl v
+flags given, 0 or more.
+.El
+.Pp
+Settings of
+.Pa poudriere.conf
+are not passed to hooks.
+To pass one, export it there:
+.Bd -literal -offset indent
+export MY_HOOK_VALUE=someval
+.Ed
+.Sh FILES
+.Bl -tag -width "hooks/plugins/plugin/make.conf" -compact
+.It Pa hooks/ Ns Ar hook Ns Pa .sh
+Hook script.
+.It Pa hooks/plugins/ Ns Ar plugin Ns Pa / Ns Ar hook Ns Pa .sh
+Hook script of a plugin.
+.It Pa hooks/plugins/ Ns Ar plugin Ns Pa /make.conf
+Additions of a plugin to
+.Pa make.conf .
+.El
+.Pp
+All paths are relative to
+.Pa /usr/local/etc/poudriere.d .
+.Sh SEE ALSO
+.Xr poudriere 8 ,
+.Xr poudriere-bulk 8 ,
+.Xr poudriere-jail 8 ,
+.Xr poudriere-pkgclean 8 ,
+.Xr poudriere-ports 8 ,
+.Xr poudriere-repo 8 ,
+.Xr poudriere-testport 8
+.Sh CAVEATS
+.Xr poudriere-testport 8
+does not run the
+.Ql bulk
+hook.
+It runs the
+.Ql jail ,
+.Ql builder
+and build step hooks, and the
+.Ql pkgbuild
+hook for the dependencies it builds.
+.Pp
+Hooks are run synchronously and a failing hook stops
+.Xr poudriere 8 ,
+so a hook should be short and should handle its own errors.

@@ -38,6 +38,7 @@ EXTRA_DIST=	\
 dist_bin_SCRIPTS=	poudriere
 
 dist_man_MANS=	src/man/poudriere.8 \
+		src/man/poudriere-hooks.5 \
 		src/man/poudriere-audit.8 \
 		src/man/poudriere-bulk.8 \
 		src/man/poudriere-distclean.8 \
